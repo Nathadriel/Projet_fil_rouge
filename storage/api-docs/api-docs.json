@@ -1,0 +1,942 @@
+{
+    "openapi": "3.0.0",
+    "info": {
+        "title": "BetOnMe API",
+        "description": "API de BetOnMe : paris fictifs en BetCoins. Toutes les requêtes doivent envoyer l'en-tête Accept: application/json.",
+        "version": "1.0.0"
+    },
+    "servers": [
+        {
+            "url": "http://127.0.0.1:8000/api/v1",
+            "description": "Local"
+        }
+    ],
+    "paths": {
+        "/me/bets": {
+            "get": {
+                "tags": [
+                    "Bets"
+                ],
+                "summary": "Mes paris",
+                "description": "Retourne les paris de l'utilisateur connecté, du plus récent au plus ancien (10 par page).",
+                "operationId": "d082a8ad8502876077a23dad9b4bcdba",
+                "responses": {
+                    "200": {
+                        "description": "Succès",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/components/schemas/Bet"
+                                            }
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Non authentifié",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/MessageResponse"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/events/{id}/bets": {
+            "post": {
+                "tags": [
+                    "Bets"
+                ],
+                "summary": "Parier sur un événement",
+                "description": "Mise des BetCoins sur OUI ou NON. Un seul pari par événement.",
+                "operationId": "8d2766598610f4139a58faaa23c96f6a",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "example": 4
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/BetRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Pari enregistré",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/components/schemas/Bet"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Non authentifié",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/MessageResponse"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Événement introuvable",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/MessageResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Pari refusé (solde insuffisant, paris fermés, déjà parié...)",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ValidationError"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/events": {
+            "get": {
+                "tags": [
+                    "Events"
+                ],
+                "summary": "Lister les événements",
+                "description": "Retourne les événements paginés (10 par page). Par défaut : les événements ouverts.",
+                "operationId": "e811bafd16bf18674fae61883bf2e926",
+                "parameters": [
+                    {
+                        "name": "filter",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "example": "open",
+                            "enum": [
+                                "open",
+                                "closed",
+                                "all"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "category",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "politique",
+                                "tech",
+                                "sport",
+                                "environnement",
+                                "insolite"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "page",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "example": 1
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Succès",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/EventCollection"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "tags": [
+                    "Events"
+                ],
+                "summary": "Proposer un événement",
+                "description": "Réservé aux joueurs de grade Parieur ou plus. L'événement reste en attente de validation par un administrateur.",
+                "operationId": "5952b4568d746fcd156533d7ee722310",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/EventRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Créé (en attente de validation)",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/components/schemas/Event"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Non authentifié",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/MessageResponse"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Grade insuffisant",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/MessageResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Erreur de validation",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ValidationError"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/events/{id}": {
+            "get": {
+                "tags": [
+                    "Events"
+                ],
+                "summary": "Afficher un événement",
+                "operationId": "953129c3cf3b063221317f76e71cb575",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "example": 4
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Succès",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/components/schemas/Event"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Événement non publié",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/MessageResponse"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Introuvable",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/MessageResponse"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/leaderboard": {
+            "get": {
+                "tags": [
+                    "Events"
+                ],
+                "summary": "Classement de la semaine",
+                "description": "Top 10 des BetCoins gagnés depuis lundi.",
+                "operationId": "7645b3590b005325d933ae399ff5661b",
+                "responses": {
+                    "200": {
+                        "description": "Succès",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/components/schemas/LeaderboardRow"
+                                            }
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/register": {
+            "post": {
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "Inscription",
+                "description": "Crée un compte avec 100 BetCoins offerts.",
+                "operationId": "d79ac57d52a31589e5ecdaa73c3a950c",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/RegisterRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Utilisateur créé",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "message": {
+                                            "type": "string",
+                                            "example": "User created"
+                                        },
+                                        "user": {
+                                            "$ref": "#/components/schemas/User"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Erreur de validation (ex : email déjà utilisé)",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ValidationError"
+                                }
+                            }
+                        }
+                    },
+                    "429": {
+                        "description": "Trop de tentatives",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/MessageResponse"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/login": {
+            "post": {
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "Connexion",
+                "description": "Vérifie les identifiants et retourne un token Sanctum (valable 24 h).",
+                "operationId": "eb4a9d12f4bb474018dd941fe27d2810",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/LoginRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Succès",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/LoginResponse"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Identifiants invalides",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/MessageResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Erreur de validation",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ValidationError"
+                                }
+                            }
+                        }
+                    },
+                    "429": {
+                        "description": "Trop de tentatives",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/MessageResponse"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/logout": {
+            "post": {
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "Déconnexion",
+                "description": "Supprime le token utilisé pour la requête.",
+                "operationId": "91a5bdd6711bc04e24cbcbe64b0b36bb",
+                "responses": {
+                    "204": {
+                        "description": "Token supprimé"
+                    },
+                    "401": {
+                        "description": "Non authentifié",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/MessageResponse"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/me": {
+            "get": {
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "Mon profil",
+                "description": "Retourne le solde, le grade et la progression de l'utilisateur connecté.",
+                "operationId": "6c28a65da4d230795e7b7e3293dc1a61",
+                "responses": {
+                    "200": {
+                        "description": "Succès",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/components/schemas/User"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Non authentifié",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/MessageResponse"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ]
+            }
+        }
+    },
+    "components": {
+        "schemas": {
+            "User": {
+                "properties": {
+                    "id": {
+                        "type": "integer",
+                        "example": 3
+                    },
+                    "name": {
+                        "type": "string",
+                        "example": "Tom"
+                    },
+                    "email": {
+                        "type": "string",
+                        "format": "email",
+                        "example": "tom@betonme.test"
+                    },
+                    "betcoins": {
+                        "type": "integer",
+                        "example": 100
+                    },
+                    "grade": {
+                        "type": "string",
+                        "example": "Novice"
+                    },
+                    "next_grade": {
+                        "type": "string",
+                        "example": "Parieur",
+                        "nullable": true
+                    },
+                    "can_create_events": {
+                        "type": "boolean",
+                        "example": false
+                    }
+                },
+                "type": "object"
+            },
+            "Event": {
+                "properties": {
+                    "id": {
+                        "type": "integer",
+                        "example": 4
+                    },
+                    "title": {
+                        "type": "string",
+                        "example": "Il neigera à Marseille avant le 31 décembre"
+                    },
+                    "description": {
+                        "type": "string",
+                        "example": "Météo-France relèvera-t-il au moins un flocon ?"
+                    },
+                    "category": {
+                        "type": "string",
+                        "example": "environnement"
+                    },
+                    "status": {
+                        "type": "string",
+                        "example": "open",
+                        "enum": [
+                            "pending",
+                            "open",
+                            "refused",
+                            "resolved",
+                            "cancelled"
+                        ]
+                    },
+                    "odds_yes": {
+                        "type": "number",
+                        "example": 6
+                    },
+                    "odds_no": {
+                        "type": "number",
+                        "example": 1.1
+                    },
+                    "result": {
+                        "type": "string",
+                        "example": null,
+                        "nullable": true,
+                        "enum": [
+                            "yes",
+                            "no"
+                        ]
+                    },
+                    "closes_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "example": "2026-12-02T20:00:00+01:00"
+                    },
+                    "bets_count": {
+                        "type": "integer",
+                        "example": 6
+                    },
+                    "_links": {
+                        "properties": {
+                            "self": {
+                                "type": "string",
+                                "format": "uri",
+                                "example": "http://127.0.0.1:8000/api/v1/events/4"
+                            },
+                            "bet": {
+                                "type": "string",
+                                "format": "uri",
+                                "example": "http://127.0.0.1:8000/api/v1/events/4/bets"
+                            },
+                            "all": {
+                                "type": "string",
+                                "format": "uri",
+                                "example": "http://127.0.0.1:8000/api/v1/events"
+                            }
+                        },
+                        "type": "object"
+                    }
+                },
+                "type": "object"
+            },
+            "EventCollection": {
+                "properties": {
+                    "data": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/Event"
+                        }
+                    },
+                    "links": {
+                        "type": "object"
+                    },
+                    "meta": {
+                        "type": "object"
+                    }
+                },
+                "type": "object"
+            },
+            "EventRequest": {
+                "required": [
+                    "title",
+                    "description",
+                    "category",
+                    "closes_at"
+                ],
+                "properties": {
+                    "title": {
+                        "type": "string",
+                        "example": "Un chat deviendra maire de Bordeaux"
+                    },
+                    "description": {
+                        "type": "string",
+                        "example": "Un félin sera-t-il officiellement élu à la mairie ?"
+                    },
+                    "category": {
+                        "type": "string",
+                        "example": "insolite",
+                        "enum": [
+                            "politique",
+                            "tech",
+                            "sport",
+                            "environnement",
+                            "insolite"
+                        ]
+                    },
+                    "closes_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "example": "2026-12-20 20:00"
+                    }
+                },
+                "type": "object"
+            },
+            "Bet": {
+                "properties": {
+                    "id": {
+                        "type": "integer",
+                        "example": 12
+                    },
+                    "choice": {
+                        "type": "string",
+                        "example": "yes",
+                        "enum": [
+                            "yes",
+                            "no"
+                        ]
+                    },
+                    "amount": {
+                        "type": "integer",
+                        "example": 20
+                    },
+                    "odds": {
+                        "type": "number",
+                        "example": 3.6
+                    },
+                    "status": {
+                        "type": "string",
+                        "example": "pending",
+                        "enum": [
+                            "pending",
+                            "won",
+                            "lost",
+                            "refunded"
+                        ]
+                    },
+                    "potential_gain": {
+                        "type": "integer",
+                        "example": 72
+                    },
+                    "payout": {
+                        "type": "integer",
+                        "example": 0
+                    },
+                    "event": {
+                        "properties": {
+                            "id": {
+                                "type": "integer",
+                                "example": 6
+                            },
+                            "title": {
+                                "type": "string",
+                                "example": "Une nouvelle console sera annoncée par surprise ce mois-ci"
+                            },
+                            "link": {
+                                "type": "string",
+                                "format": "uri",
+                                "example": "http://127.0.0.1:8000/api/v1/events/6"
+                            }
+                        },
+                        "type": "object"
+                    },
+                    "created_at": {
+                        "type": "string",
+                        "format": "date-time"
+                    }
+                },
+                "type": "object"
+            },
+            "BetRequest": {
+                "required": [
+                    "choice",
+                    "amount"
+                ],
+                "properties": {
+                    "choice": {
+                        "type": "string",
+                        "example": "yes",
+                        "enum": [
+                            "yes",
+                            "no"
+                        ]
+                    },
+                    "amount": {
+                        "type": "integer",
+                        "example": 20
+                    }
+                },
+                "type": "object"
+            },
+            "LeaderboardRow": {
+                "properties": {
+                    "rank": {
+                        "type": "integer",
+                        "example": 1
+                    },
+                    "name": {
+                        "type": "string",
+                        "example": "Lea"
+                    },
+                    "betcoins_won": {
+                        "type": "integer",
+                        "example": 150
+                    }
+                },
+                "type": "object"
+            },
+            "RegisterRequest": {
+                "required": [
+                    "name",
+                    "email",
+                    "password"
+                ],
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "example": "Nathou"
+                    },
+                    "email": {
+                        "type": "string",
+                        "format": "email",
+                        "example": "nathou@example.com"
+                    },
+                    "password": {
+                        "type": "string",
+                        "format": "password",
+                        "example": "Sup3r-Secret!Pass"
+                    }
+                },
+                "type": "object"
+            },
+            "LoginRequest": {
+                "required": [
+                    "email",
+                    "password"
+                ],
+                "properties": {
+                    "email": {
+                        "type": "string",
+                        "format": "email",
+                        "example": "tom@betonme.test"
+                    },
+                    "password": {
+                        "type": "string",
+                        "format": "password",
+                        "example": "Password!2026"
+                    }
+                },
+                "type": "object"
+            },
+            "LoginResponse": {
+                "properties": {
+                    "access_token": {
+                        "type": "string",
+                        "example": "1|xYz...token...AbC"
+                    },
+                    "token_type": {
+                        "type": "string",
+                        "example": "Bearer"
+                    },
+                    "user": {
+                        "$ref": "#/components/schemas/User"
+                    }
+                },
+                "type": "object"
+            },
+            "MessageResponse": {
+                "properties": {
+                    "message": {
+                        "type": "string",
+                        "example": "Unauthenticated."
+                    }
+                },
+                "type": "object"
+            },
+            "ValidationError": {
+                "properties": {
+                    "message": {
+                        "type": "string",
+                        "example": "Le champ choix est obligatoire."
+                    },
+                    "errors": {
+                        "type": "object",
+                        "example": {
+                            "choice": [
+                                "Le champ choix est obligatoire."
+                            ]
+                        }
+                    }
+                },
+                "type": "object"
+            }
+        },
+        "securitySchemes": {
+            "BearerAuth": {
+                "type": "http",
+                "description": "Utilise le token retourné par /login : Authorization: Bearer <token>",
+                "bearerFormat": "token",
+                "scheme": "bearer"
+            }
+        }
+    },
+    "tags": [
+        {
+            "name": "Auth",
+            "description": "Inscription, connexion par token Sanctum, profil"
+        },
+        {
+            "name": "Events",
+            "description": "Événements et classement"
+        },
+        {
+            "name": "Bets",
+            "description": "Paris de l'utilisateur connecté"
+        }
+    ],
+    "security": [
+        {
+            "sanctum": []
+        }
+    ]
+}

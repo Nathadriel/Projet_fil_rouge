@@ -6,19 +6,24 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
+    /**
+     * Run the migrations.
+     */
     public function up(): void
     {
         Schema::table('users', function (Blueprint $table) {
-            // Monnaie fictive : entier pour éviter les erreurs d'arrondi des flottants
+            // Fake currency stored as an integer to avoid rounding errors
             $table->unsignedInteger('betcoins')->default(100)->after('password');
-            $table->string('role', 20)->default('user')->after('betcoins');
         });
     }
 
+    /**
+     * Reverse the migrations.
+     */
     public function down(): void
     {
         Schema::table('users', function (Blueprint $table) {
-            $table->dropColumn(['betcoins', 'role']);
+            $table->dropColumn('betcoins');
         });
     }
 };

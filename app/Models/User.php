@@ -2,35 +2,40 @@
 
 namespace App\Models;
 
-use App\Enums\Grade;
+// use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Laravel\Sanctum\HasApiTokens;
+use Spatie\Permission\Traits\HasRoles;
 
 #[Fillable(['name', 'email', 'password'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
 {
     /** @use HasFactory<UserFactory> */
-    use HasFactory, Notifiable;
+    use HasApiTokens, HasFactory, HasRoles, Notifiable;
 
-    public const ROLE_USER = 'user';
-
-    public const ROLE_ADMIN = 'admin';
-
-    /** BetCoins offerts à l'inscription */
-    public const SIGNUP_BONUS = 100;
-
-    /** Valeurs par défaut côté PHP (identiques aux défauts SQL des colonnes) */
-    protected $attributes = [
-        'betcoins' => self::SIGNUP_BONUS,
-        'role' => self::ROLE_USER,
+    // Grade name => number of bets needed
+    public const GRADES = [
+        'Novice' => 0,
+        'Parieur' => 3,
+        'Expert' => 10,
+        'Légende' => 25,
     ];
 
+    protected $attributes = [
+        'betcoins' => 100,
+    ];
+
+    /**
+     * Get the attributes that should be cast.
+     *
+     * @return array<string, string>
+     */
     protected function casts(): array
     {
         return [
@@ -40,31 +45,50 @@ class User extends Authenticatable
         ];
     }
 
-    public function paris(): HasMany
+    public function bets()
     {
-        return $this->hasMany(Pari::class);
+        return $this->hasMany(Bet::class);
     }
 
-    public function events(): HasMany
+    public function events()
     {
         return $this->hasMany(Event::class);
     }
 
-    public function transactions(): HasMany
+    public function transactions()
     {
         return $this->hasMany(Transaction::class);
     }
 
-    public function isAdmin(): bool
+    public function purchases()
     {
-        return $this->role === self::ROLE_ADMIN;
+        return $this->hasMany(Purchase::class);
     }
 
-    public function grade(): Grade
+    public function grade(): string
     {
-        // paris_count est chargé via withCount() quand c'est possible, sinon une requête COUNT
-        $count = $this->paris_count ?? $this->paris()->count();
+        $count = $this->bets()->count();
+        $grade = 'Novice';
 
-        return Grade::fromBetCount((int) $count);
+        foreach (self::GRADES as $name => $needed) {
+            if ($count >= $needed) {
+                $grade = $name;
+            }
+        }
+
+        return $grade;
+    }
+
+    public function nextGrade(): ?string
+    {
+        $names = array_keys(self::GRADES);
+        $index = array_search($this->grade(), $names);
+
+        return $names[$index + 1] ?? null;
+    }
+
+    public function canCreateEvents(): bool
+    {
+        return $this->bets()->count() >= self::GRADES['Parieur'];
     }
 }

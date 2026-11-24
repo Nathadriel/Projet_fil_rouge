@@ -5,14 +5,14 @@
 @section('content')
 <h1>Back-office</h1>
 
-<section aria-labelledby="pending-title">
-    <h2 id="pending-title">Événements en attente de validation ({{ $pending->count() }})</h2>
-    @forelse ($pending as $event)
+<section>
+    <h2>Événements en attente de validation ({{ $pendingEvents->count() }})</h2>
+
+    @forelse ($pendingEvents as $event)
         <article class="card admin-item">
             <div>
                 <h3>{{ $event->title }}</h3>
-                <p class="muted small">{{ \App\Models\Event::CATEGORIES[$event->category] ?? '' }} · proposé par {{ $event->creator?->name ?? '—' }}
-                    · clôture {{ $event->closes_at->translatedFormat('d/m/Y H:i') }}</p>
+                <p class="muted small">{{ $event->categoryLabel() }} · proposé par {{ $event->user->name ?? '—' }} · clôture {{ $event->closes_at->format('d/m/Y H:i') }}</p>
                 <p>{{ $event->description }}</p>
             </div>
             <div class="admin-actions">
@@ -33,14 +33,14 @@
     @endforelse
 </section>
 
-<section aria-labelledby="open-title">
-    <h2 id="open-title">Événements ouverts à résoudre ({{ $open->count() }})</h2>
-    @forelse ($open as $event)
+<section>
+    <h2>Événements ouverts à résoudre ({{ $openEvents->count() }})</h2>
+
+    @forelse ($openEvents as $event)
         <article class="card admin-item">
             <div>
                 <h3><a href="{{ route('events.show', $event) }}">{{ $event->title }}</a></h3>
-                <p class="muted small">{{ $event->paris_count }} pari(s) · clôture {{ $event->closes_at->translatedFormat('d/m/Y H:i') }}
-                    @if ($event->closes_at->isPast()) · <strong>paris fermés</strong> @endif</p>
+                <p class="muted small">{{ $event->bets_count }} pari(s) · clôture {{ $event->closes_at->format('d/m/Y H:i') }}</p>
             </div>
             <div class="admin-actions">
                 <form method="POST" action="{{ route('admin.events.resolve', $event) }}" data-confirm="Confirmer le résultat ? Les gains seront distribués.">

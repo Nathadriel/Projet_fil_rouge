@@ -5,11 +5,12 @@
 @section('content')
 <div class="narrow">
     <h1>Connexion</h1>
+
     <form method="POST" action="{{ route('login') }}" class="card form">
         @csrf
+
         <label for="email">Adresse e-mail</label>
-        <input type="email" id="email" name="email" value="{{ old('email') }}" required autofocus autocomplete="email"
-               @error('email') aria-invalid="true" aria-describedby="email-error" @enderror>
+        <input type="email" id="email" name="email" value="{{ old('email') }}" required autofocus autocomplete="email">
         @include('partials.field-error', ['name' => 'email'])
 
         <label for="password">Mot de passe</label>

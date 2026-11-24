@@ -9,20 +9,17 @@
 
     <form method="POST" action="{{ route('register') }}" class="card form">
         @csrf
+
         <label for="name">Pseudo</label>
-        <input type="text" id="name" name="name" value="{{ old('name') }}" required autocomplete="username"
-               minlength="3" maxlength="30" @error('name') aria-invalid="true" aria-describedby="name-error" @enderror>
+        <input type="text" id="name" name="name" value="{{ old('name') }}" required autocomplete="username">
         @include('partials.field-error', ['name' => 'name'])
 
         <label for="email">Adresse e-mail</label>
-        <input type="email" id="email" name="email" value="{{ old('email') }}" required autocomplete="email"
-               @error('email') aria-invalid="true" aria-describedby="email-error" @enderror>
+        <input type="email" id="email" name="email" value="{{ old('email') }}" required autocomplete="email">
         @include('partials.field-error', ['name' => 'email'])
 
         <label for="password">Mot de passe</label>
-        <input type="password" id="password" name="password" required autocomplete="new-password" minlength="12"
-               aria-describedby="password-help @error('password') password-error @enderror"
-               @error('password') aria-invalid="true" @enderror>
+        <input type="password" id="password" name="password" required autocomplete="new-password" aria-describedby="password-help">
         <p class="help" id="password-help">12 caractères minimum, avec majuscule, minuscule, chiffre et caractère spécial.</p>
         @include('partials.field-error', ['name' => 'password'])
 
@@ -31,7 +28,7 @@
 
         <label class="checkbox">
             <input type="checkbox" name="consent" value="1" required @checked(old('consent'))>
-            J'ai lu et j'accepte la <a href="{{ route('privacy') }}" target="_blank" rel="noopener">politique de confidentialité</a>.
+            J'ai lu et j'accepte la <a href="{{ route('privacy') }}" target="_blank">politique de confidentialité</a>.
         </label>
         @include('partials.field-error', ['name' => 'consent'])
 

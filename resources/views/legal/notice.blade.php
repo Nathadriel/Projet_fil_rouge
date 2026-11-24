@@ -12,5 +12,8 @@
     <h2>Nature du service</h2>
     <p>BetOnMe est un jeu de divertissement gratuit utilisant une monnaie fictive. Il ne s'agit pas d'un site de jeux d'argent :
         aucune mise ni aucun gain en argent réel n'est possible.</p>
+    <h2>Achats de BetCoins</h2>
+    <p>Les packs de BetCoins sont des biens numériques fictifs destinés au divertissement. Ils ne sont ni remboursables,
+        ni convertibles en argent, et ne donnent droit à aucun gain matériel. Les achats sont limités à 3 par période de 24 heures.</p>
 </div>
 @endsection

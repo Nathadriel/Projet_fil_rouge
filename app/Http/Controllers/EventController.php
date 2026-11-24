@@ -2,82 +2,96 @@
 
 namespace App\Http\Controllers;
 
-use App\Enums\EventStatus;
 use App\Models\Event;
-use Illuminate\Http\RedirectResponse;
+use App\Services\NewsService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Gate;
-use Illuminate\Validation\Rule;
-use Illuminate\View\View;
 
 class EventController extends Controller
 {
-    public function index(Request $request): View
+    /**
+     * Display a listing of the resource.
+     */
+    public function index(Request $request, NewsService $newsService)
     {
-        $filter = $request->query('filtre', 'ouverts');
+        $filter = $request->query('filter', 'open');
+        $query = Event::withCount('bets');
 
-        $query = Event::query()->withCount('paris');
-        match ($filter) {
-            'clotures' => $query->closed()->latest('resolved_at'),
-            'tous' => $query->whereIn('status', [EventStatus::Open, EventStatus::Resolved, EventStatus::Cancelled])->latest(),
-            default => $query->open()->orderBy('closes_at'),
-        };
-
-        if ($request->filled('categorie') && array_key_exists($request->query('categorie'), Event::CATEGORIES)) {
-            $query->where('category', $request->query('categorie'));
+        if ($filter === 'closed') {
+            $query->whereIn('status', [Event::STATUS_RESOLVED, Event::STATUS_CANCELLED])->latest('resolved_at');
+        } elseif ($filter === 'all') {
+            $query->whereIn('status', [Event::STATUS_OPEN, Event::STATUS_RESOLVED, Event::STATUS_CANCELLED])->latest();
+        } else {
+            $query->where('status', Event::STATUS_OPEN)->orderBy('closes_at');
         }
 
-        return view('events.index', [
-            'events' => $query->paginate(9)->withQueryString(),
-            'filter' => $filter,
+        if (array_key_exists($request->query('category'), Event::CATEGORIES)) {
+            $query->where('category', $request->query('category'));
+        }
+
+        $events = $query->paginate(9)->withQueryString();
+        $news = $newsService->headlines($request->query('category'));
+
+        return view('events.index', compact('events', 'filter', 'news'));
+    }
+
+    /**
+     * Show the form for creating a new resource.
+     */
+    public function create(NewsService $newsService)
+    {
+        Gate::authorize('create', Event::class);
+
+        $news = $newsService->headlines();
+
+        return view('events.create', compact('news'));
+    }
+
+    /**
+     * Store a newly created resource in storage.
+     */
+    public function store(Request $request)
+    {
+        Gate::authorize('create', Event::class);
+
+        $request->validate([
+            'title' => 'required|string|min:10|max:150',
+            'description' => 'required|string|min:20|max:2000',
+            'category' => 'required|in:'.implode(',', array_keys(Event::CATEGORIES)),
+            'closes_at' => 'required|date|after:+1 hour|before:+1 year',
         ]);
-    }
 
-    public function show(Request $request, Event $event): View
-    {
-        // Un événement en attente ou refusé n'est visible que par son créateur et les admins
-        if (in_array($event->status, [EventStatus::Pending, EventStatus::Refused], true)) {
-            Gate::authorize('view-unpublished-event', $event);
-        }
-
-        $event->loadCount('paris');
-        $userBet = $request->user()
-            ? $event->paris()->where('user_id', $request->user()->id)->first()
-            : null;
-
-        $stats = $event->paris()
-            ->selectRaw('choice, COUNT(*) as total, SUM(amount) as volume')
-            ->groupBy('choice')
-            ->get()
-            ->keyBy(fn ($row) => $row->choice->value);
-
-        return view('events.show', compact('event', 'userBet', 'stats'));
-    }
-
-    public function create(): View
-    {
-        Gate::authorize('create-event');
-
-        return view('events.create', ['categories' => Event::CATEGORIES]);
-    }
-
-    public function store(Request $request): RedirectResponse
-    {
-        Gate::authorize('create-event');
-
-        $data = $request->validate([
-            'title' => ['required', 'string', 'min:10', 'max:150'],
-            'description' => ['required', 'string', 'min:20', 'max:2000'],
-            'category' => ['required', Rule::in(array_keys(Event::CATEGORIES))],
-            'closes_at' => ['required', 'date', 'after:+1 hour', 'before:+1 year'],
-        ], [], ['title' => 'titre', 'closes_at' => 'date de clôture', 'category' => 'catégorie']);
-
-        $event = new Event($data);
-        $event->creator()->associate($request->user());
-        $event->status = EventStatus::Pending;
+        // user_id and status are not fillable: they are set by the code
+        $event = new Event($request->only(['title', 'description', 'category', 'closes_at']));
+        $event->user_id = Auth::id();
+        $event->status = Event::STATUS_PENDING;
         $event->save();
 
-        return redirect()->route('profile.show')
-            ->with('success', 'Événement proposé ! Il sera visible dès qu\'un administrateur l\'aura validé.');
+        return redirect()->route('profile.show')->with('success', 'Événement proposé ! Il sera visible dès qu\'un administrateur l\'aura validé.');
+    }
+
+    /**
+     * Display the specified resource.
+     */
+    public function show(Event $event)
+    {
+        Gate::authorize('view', $event);
+
+        $event->loadCount('bets');
+
+        $userBet = null;
+        if (Auth::check()) {
+            $userBet = $event->bets()->where('user_id', Auth::id())->first();
+        }
+
+        $yes = $event->bets()->where('choice', 'yes');
+        $no = $event->bets()->where('choice', 'no');
+        $stats = [
+            'yes' => ['count' => (clone $yes)->count(), 'total' => (clone $yes)->sum('amount')],
+            'no' => ['count' => (clone $no)->count(), 'total' => (clone $no)->sum('amount')],
+        ];
+
+        return view('events.show', compact('event', 'userBet', 'stats'));
     }
 }

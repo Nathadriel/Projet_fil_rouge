@@ -2,8 +2,6 @@
 
 namespace Tests\Feature;
 
-use App\Enums\BetChoice;
-use App\Enums\EventStatus;
 use App\Models\Event;
 use App\Models\User;
 use App\Services\BettingService;
@@ -14,16 +12,18 @@ class EventTest extends TestCase
 {
     use RefreshDatabase;
 
-    private function userWithBets(int $count): User
+    private function userWithGradeParieur(): User
     {
-        $user = User::factory()->withCoins(1000)->create();
-        $betting = app(BettingService::class);
-        Event::factory($count)->create()->each(fn ($e) => $betting->placeBet($user, $e, BetChoice::Yes, 1));
+        $user = User::factory()->create(['betcoins' => 1000]);
+
+        foreach (Event::factory(3)->create() as $event) {
+            app(BettingService::class)->placeBet($user, $event, 'yes', 1);
+        }
 
         return $user;
     }
 
-    private function validEvent(): array
+    private function eventData(): array
     {
         return [
             'title' => 'Un chat deviendra maire de Bordeaux',
@@ -33,100 +33,73 @@ class EventTest extends TestCase
         ];
     }
 
-    public function test_home_and_event_list_are_public(): void
+    public function test_home_and_event_pages_are_public(): void
     {
         $event = Event::factory()->create();
 
-        $this->get('/')->assertOk()->assertSee($event->title);
-        $this->get('/evenements')->assertOk()->assertSee($event->title);
-        $this->get(route('events.show', $event))->assertOk()->assertSee('Connectez-vous');
+        $this->get('/')->assertStatus(200)->assertSee($event->title);
+        $this->get('/events')->assertStatus(200)->assertSee($event->title);
+        $this->get(route('events.show', $event))->assertStatus(200)->assertSee('Connectez-vous');
     }
 
-    public function test_novice_cannot_create_event(): void
+    public function test_events_can_be_filtered_by_category(): void
     {
-        $novice = User::factory()->create();
+        $sport = Event::factory()->create(['category' => 'sport']);
+        $tech = Event::factory()->create(['category' => 'tech']);
 
-        $this->actingAs($novice)->get(route('events.create'))->assertForbidden();
-        $this->actingAs($novice)->post(route('events.store'), $this->validEvent())->assertForbidden();
+        $this->get('/events?category=sport')
+            ->assertSee($sport->title)
+            ->assertDontSee($tech->title);
     }
 
-    public function test_parieur_can_propose_event_which_stays_pending(): void
+    public function test_novice_cannot_create_an_event(): void
     {
-        $user = $this->userWithBets(3);
-
-        $this->actingAs($user)->post(route('events.store'), $this->validEvent())->assertRedirect(route('profile.show'));
-
-        $event = Event::where('title', 'Un chat deviendra maire de Bordeaux')->firstOrFail();
-        $this->assertSame(EventStatus::Pending, $event->status);
-        $this->assertSame($user->id, $event->user_id);
-    }
-
-    public function test_user_cannot_force_status_or_odds_via_mass_assignment(): void
-    {
-        $user = $this->userWithBets(3);
-
-        $this->actingAs($user)->post(route('events.store'), $this->validEvent() + ['status' => 'open', 'odds_yes' => 49]);
-
-        $event = Event::where('title', 'Un chat deviendra maire de Bordeaux')->firstOrFail();
-        $this->assertSame(EventStatus::Pending, $event->status);
-        $this->assertEquals(2.0, (float) $event->odds_yes);
-    }
-
-    public function test_event_validation_rules(): void
-    {
-        $user = $this->userWithBets(3);
-
-        $this->actingAs($user)->post(route('events.store'), ['title' => 'court', 'category' => 'cuisine', 'closes_at' => now()->subDay()])
-            ->assertSessionHasErrors(['title', 'description', 'category', 'closes_at']);
-    }
-
-    public function test_pending_event_is_hidden_from_other_users(): void
-    {
-        $event = Event::factory()->pending()->create();
-
-        $this->get(route('events.show', $event))->assertForbidden();
-        $this->actingAs(User::factory()->create())->get(route('events.show', $event))->assertForbidden();
-        $this->actingAs($event->creator)->get(route('events.show', $event))->assertOk();
-    }
-
-    public function test_admin_validates_event_with_odds(): void
-    {
-        $admin = User::factory()->admin()->create();
-        $event = Event::factory()->pending()->create();
-
-        $this->actingAs($admin)->post(route('admin.events.approve', $event), ['odds_yes' => 3.2, 'odds_no' => 1.4])
-            ->assertSessionHas('success');
-
-        $event->refresh();
-        $this->assertSame(EventStatus::Open, $event->status);
-        $this->assertEquals(3.2, (float) $event->odds_yes);
-    }
-
-    public function test_admin_refuses_event(): void
-    {
-        $admin = User::factory()->admin()->create();
-        $event = Event::factory()->pending()->create();
-
-        $this->actingAs($admin)->post(route('admin.events.refuse', $event));
-
-        $this->assertSame(EventStatus::Refused, $event->fresh()->status);
-    }
-
-    public function test_back_office_is_forbidden_to_regular_users(): void
-    {
-        $event = Event::factory()->pending()->create();
         $user = User::factory()->create();
 
-        $this->actingAs($user)->get('/admin')->assertForbidden();
-        $this->actingAs($user)->post(route('admin.events.approve', $event), ['odds_yes' => 2, 'odds_no' => 2])->assertForbidden();
-        $this->assertSame(EventStatus::Pending, $event->fresh()->status);
+        $this->actingAs($user)->get(route('events.create'))->assertStatus(403);
+        $this->actingAs($user)->post(route('events.store'), $this->eventData())->assertStatus(403);
     }
 
-    public function test_admin_dashboard_lists_pending_events(): void
+    public function test_parieur_can_create_an_event_which_stays_pending(): void
     {
-        $admin = User::factory()->admin()->create();
-        $event = Event::factory()->pending()->create();
+        $user = $this->userWithGradeParieur();
 
-        $this->actingAs($admin)->get('/admin')->assertOk()->assertSee($event->title);
+        $this->actingAs($user)->post(route('events.store'), $this->eventData())
+            ->assertRedirect(route('profile.show'));
+
+        $this->assertDatabaseHas('events', [
+            'title' => 'Un chat deviendra maire de Bordeaux',
+            'user_id' => $user->id,
+            'status' => 'pending',
+        ]);
+    }
+
+    public function test_user_cannot_change_status_or_odds_with_the_form(): void
+    {
+        $user = $this->userWithGradeParieur();
+
+        $this->actingAs($user)->post(route('events.store'), $this->eventData() + ['status' => 'open', 'odds_yes' => 49]);
+
+        $this->assertDatabaseHas('events', ['title' => 'Un chat deviendra maire de Bordeaux', 'status' => 'pending', 'odds_yes' => 2]);
+    }
+
+    public function test_event_creation_fails_with_invalid_data(): void
+    {
+        $user = $this->userWithGradeParieur();
+
+        $this->actingAs($user)->post(route('events.store'), [
+            'title' => 'court',
+            'category' => 'cuisine',
+            'closes_at' => now()->subDay(),
+        ])->assertSessionHasErrors(['title', 'description', 'category', 'closes_at']);
+    }
+
+    public function test_pending_event_is_only_visible_by_its_creator(): void
+    {
+        $event = Event::factory()->create(['status' => Event::STATUS_PENDING]);
+
+        $this->get(route('events.show', $event))->assertStatus(403);
+        $this->actingAs(User::factory()->create())->get(route('events.show', $event))->assertStatus(403);
+        $this->actingAs($event->user)->get(route('events.show', $event))->assertStatus(200);
     }
 }

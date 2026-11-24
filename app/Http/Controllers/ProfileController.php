@@ -2,61 +2,65 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\JsonResponse;
-use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
-use Illuminate\View\View;
 
 class ProfileController extends Controller
 {
-    public function show(Request $request): View
+    public function show(Request $request)
     {
-        $user = $request->user()->loadCount('paris');
-        $grade = $user->grade();
-        $next = $grade->next();
+        $user = $request->user();
+        $betCount = $user->bets()->count();
+        $nextGrade = $user->nextGrade();
 
-        return view('profile.show', [
-            'user' => $user,
-            'grade' => $grade,
-            'nextGrade' => $next,
-            'progress' => $next ? min(100, (int) round($user->paris_count / $next->value * 100)) : 100,
-            'paris' => $user->paris()->with('event')->latest()->paginate(10),
-            'myEvents' => $user->events()->latest()->get(),
-            'transactions' => $user->transactions()->latest()->limit(10)->get(),
-        ]);
+        $progress = 100;
+        if ($nextGrade) {
+            $progress = min(100, round($betCount / $user::GRADES[$nextGrade] * 100));
+        }
+
+        $bets = $user->bets()->with('event')->latest()->paginate(10);
+        $events = $user->events()->latest()->get();
+        $transactions = $user->transactions()->latest()->limit(10)->get();
+
+        return view('profile.show', compact('user', 'betCount', 'nextGrade', 'progress', 'bets', 'events', 'transactions'));
     }
 
-    /** RGPD - droit d'accès et de portabilité : export de toutes les données de l'utilisateur */
-    public function export(Request $request): JsonResponse
+    // GDPR: the user can download all his data
+    public function export(Request $request)
     {
-        $user = $request->user()->load(['paris.event:id,title', 'events', 'transactions']);
+        $user = $request->user();
 
-        return response()->json([
-            'exporte_le' => now()->toIso8601String(),
-            'compte' => $user->only(['name', 'email', 'betcoins', 'role', 'created_at']),
-            'paris' => $user->paris,
-            'evenements_proposes' => $user->events,
+        $data = [
+            'exported_at' => now()->toIso8601String(),
+            'account' => $user->only(['name', 'email', 'betcoins', 'created_at']),
+            'bets' => $user->bets()->with('event:id,title')->get(),
+            'events' => $user->events,
             'transactions' => $user->transactions,
-        ], 200, [
+            'purchases' => $user->purchases,
+        ];
+
+        return response()->json($data, 200, [
             'Content-Disposition' => 'attachment; filename="mes-donnees-betonme.json"',
         ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
     }
 
-    /** RGPD - droit à l'effacement */
-    public function destroy(Request $request): RedirectResponse
+    // GDPR: the user can delete his account
+    public function destroy(Request $request)
     {
-        $request->validate(['password' => ['required', 'current_password']], [], ['password' => 'mot de passe']);
+        $request->validate([
+            'password' => 'required|current_password',
+        ]);
 
         $user = $request->user();
+
         Auth::logout();
-        Log::info('Compte supprimé', ['user' => $user->id]);
+        Log::info('Account deleted', ['user' => $user->id]);
         $user->delete();
 
         $request->session()->invalidate();
         $request->session()->regenerateToken();
 
-        return redirect()->route('home')->with('success', 'Votre compte et vos données ont été supprimés.');
+        return redirect('/')->with('success', 'Votre compte et vos données ont été supprimés.');
     }
 }

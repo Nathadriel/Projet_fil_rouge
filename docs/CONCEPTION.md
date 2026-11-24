@@ -7,11 +7,11 @@ ou peuvent être exportés en image depuis https://mermaid.live pour le mémoire
 
 ```mermaid
 erDiagram
-    USERS ||--o{ PARIS : "place"
+    USERS ||--o{ BETS : "place"
     USERS ||--o{ EVENTS : "propose"
     USERS ||--o{ TRANSACTIONS : "possède"
-    EVENTS ||--o{ PARIS : "reçoit"
-    PARIS |o--o{ TRANSACTIONS : "génère"
+    EVENTS ||--o{ BETS : "reçoit"
+    USERS ||--o{ PURCHASES : "achète"
 
     USERS {
         bigint id PK
@@ -19,7 +19,6 @@ erDiagram
         string email UK
         string password "haché bcrypt"
         int betcoins "solde, défaut 100"
-        string role "user | admin"
         datetime created_at
     }
     EVENTS {
@@ -35,7 +34,7 @@ erDiagram
         string result "yes | no, nullable"
         datetime resolved_at
     }
-    PARIS {
+    BETS {
         bigint id PK
         bigint user_id FK
         bigint event_id FK
@@ -48,13 +47,26 @@ erDiagram
     TRANSACTIONS {
         bigint id PK
         bigint user_id FK
-        bigint pari_id FK "nullable"
         string type "signup_bonus | bet | win | refund | purchase"
         int amount "signé : + crédit / - débit"
         string description
         datetime created_at
     }
+    PURCHASES {
+        bigint id PK
+        bigint user_id FK
+        string pack "starter | pro | legende"
+        int betcoins
+        int amount "en centimes"
+        string currency
+        string stripe_session_id UK
+        string status "pending | paid | expired"
+        datetime paid_at
+    }
 ```
+
+Les rôles (admin, user) sont gérés par le package **spatie/laravel-permission**, qui ajoute ses propres tables
+(`roles`, `permissions`, `model_has_roles`…) : on ne stocke donc pas le rôle dans la table `users`.
 
 ### Règles de gestion
 
@@ -68,6 +80,9 @@ erDiagram
 8. Le grade dépend du nombre de paris placés : Novice (0), Parieur (3), Expert (10), Légende (25).
 9. Seuls les Parieurs et plus (ou les admins) peuvent proposer un événement, qui reste en attente de validation.
 10. Chaque mouvement de BetCoins est tracé dans `transactions` (journalisation et audit).
+11. Le prix d'un pack est fixé côté serveur ; le navigateur n'envoie que l'identifiant du pack.
+12. Un achat n'est crédité qu'une seule fois, après vérification auprès de Stripe (statut payé et montant exact).
+13. Jeu responsable : 3 achats maximum par période de 24 heures.
 
 Les montants sont des **entiers** : on évite les erreurs d'arrondi des nombres à virgule flottante.
 
@@ -106,69 +121,71 @@ flowchart LR
 classDiagram
     class User {
         +int betcoins
-        +string role
-        +paris() HasMany
-        +events() HasMany
-        +transactions() HasMany
-        +isAdmin() bool
-        +grade() Grade
+        +GRADES
+        +bets()
+        +events()
+        +transactions()
+        +purchases()
+        +grade() string
+        +nextGrade() string
+        +canCreateEvents() bool
     }
     class Event {
         +string title
-        +EventStatus status
+        +string status
         +decimal odds_yes
         +decimal odds_no
-        +BetChoice result
-        +creator() BelongsTo
-        +paris() HasMany
+        +string result
+        +user()
+        +bets()
         +acceptsBets() bool
-        +oddsFor(BetChoice) float
+        +oddsFor(choice) float
     }
-    class Pari {
-        +BetChoice choice
+    class Bet {
+        +string choice
         +int amount
         +decimal odds
-        +BetStatus status
+        +string status
         +int payout
         +potentialGain() int
     }
     class Transaction {
-        +TransactionType type
+        +string type
         +int amount
         +string description
     }
-    class BettingService {
-        +placeBet(User, Event, BetChoice, int) Pari
-        +validateEvent(Event, float, float)
-        +refuseEvent(Event)
-        +resolveEvent(Event, BetChoice)
-        +cancelEvent(Event)
-        +grantSignupBonus(User)
+    class Purchase {
+        +string pack
+        +int betcoins
+        +int amount
+        +string status
     }
-    class Grade {
-        <<enumeration>>
-        Novice
-        Parieur
-        Expert
-        Legende
-        +fromBetCount(int) Grade
-        +canCreateEvents() bool
+    class BettingService {
+        +placeBet(User, Event, choice, amount) Bet
+        +resolveEvent(Event, result)
+        +cancelEvent(Event)
+        +addTransaction(User, type, amount, description)
+    }
+    class EventPolicy {
+        +view(User, Event) bool
+        +create(User) bool
+        +manage(User) bool
+        +before(User, ability)
     }
 
-    User "1" --> "*" Pari
+    User "1" --> "*" Bet
     User "1" --> "*" Event : propose
     User "1" --> "*" Transaction
-    Event "1" --> "*" Pari
-    BettingService ..> User
-    BettingService ..> Event
-    BettingService ..> Pari
+    User "1" --> "*" Purchase
+    Event "1" --> "*" Bet
+    BettingService ..> Bet
     BettingService ..> Transaction
-    User ..> Grade
+    EventPolicy ..> Event
 ```
 
-**Choix d'architecture :** les contrôleurs restent fins (validation de la requête, réponse HTTP).
-Toute la logique qui modifie des BetCoins est centralisée dans `BettingService`, ce qui la rend
-testable indépendamment et garantit que chaque opération se fait dans une transaction SQL.
+**Choix d'architecture :** les contrôleurs valident les données et appellent `Gate::authorize()` (règles dans
+`EventPolicy`, l'admin passe toujours grâce à la méthode `before`). La logique qui fait bouger des BetCoins est
+regroupée dans `BettingService`, pour qu'elle soit testable et toujours exécutée dans une transaction SQL.
 
 ## 4. Séquence : placer un pari
 
@@ -176,11 +193,11 @@ testable indépendamment et garantit que chaque opération se fait dans une tran
 sequenceDiagram
     actor J as Joueur
     participant R as Route + middleware auth
-    participant C as PariController
+    participant C as BetController
     participant S as BettingService
     participant DB as Base de données
 
-    J->>R: POST /evenements/{id}/paris (choix, mise, jeton CSRF)
+    J->>R: POST /events/{id}/bets (choix, mise, jeton CSRF)
     R->>C: utilisateur authentifié
     C->>C: validation (choix ∈ yes/no, mise entière ≥ 1)
     C->>S: placeBet(user, event, choix, mise)
@@ -189,9 +206,9 @@ sequenceDiagram
         S-->>C: BettingException
         C-->>J: retour au formulaire avec message d'erreur
     else pari valide
-        S->>DB: INSERT paris / UPDATE users.betcoins / INSERT transactions
+        S->>DB: INSERT bets / UPDATE users.betcoins / INSERT transactions
         S->>DB: COMMIT
-        S-->>C: Pari
+        S-->>C: Bet
         C-->>J: redirection + "Gain potentiel : X BetCoins"
     end
 ```
@@ -201,15 +218,20 @@ sequenceDiagram
 | Menace | Protection |
 |---|---|
 | Vol de mot de passe | Hachage bcrypt, mot de passe de 12 caractères minimum (recommandation CNIL) |
-| Brute force | 5 tentatives de connexion par minute (RateLimiter), échecs journalisés |
+| Brute force | 5 tentatives de connexion par minute (`LoginRequest` façon Breeze), échecs journalisés |
 | Fixation de session | Régénération de l'identifiant de session à la connexion |
 | CSRF | Jeton `@csrf` sur tous les formulaires |
 | Injection SQL | Requêtes préparées via Eloquent |
 | XSS | Échappement automatique Blade `{{ }}` + Content-Security-Policy sans script inline |
 | Clickjacking | `X-Frame-Options: DENY` et `frame-ancestors 'none'` |
 | Mass assignment | `$fillable` limité : statut, cotes et résultat jamais assignables depuis un formulaire |
-| Accès non autorisé | Middleware `auth` et `admin`, Gates `create-event` et `view-unpublished-event` |
+| Accès non autorisé | Middleware `auth` et `admin` (rôle spatie), `EventPolicy` appelée avec `Gate::authorize()` |
 | Double dépense | Transaction SQL et verrou `lockForUpdate` sur le solde |
+| Faux paiement | Webhook vérifié par `Stripe\\Webhook::constructEvent()` (signature HMAC, tolérance de 5 min contre le rejeu) |
+| Données bancaires | Paiement sur la page Stripe Checkout : aucune carte ne transite par BetOnMe (PCI-DSS) |
+| Accès à l'API | Token Sanctum (stocké haché, expire après 24 h, supprimé à la déconnexion), middleware `auth:sanctum` |
+| Appels depuis un autre site | CORS limité à notre domaine, méthodes et en-têtes autorisés listés |
+| Manipulation du prix | Montant lu dans le catalogue serveur et revérifié à la réception du paiement |
 
 ## 6. Couverture des compétences (état actuel)
 
@@ -223,12 +245,56 @@ sequenceDiagram
 | Conception | C12 veille | à faire |
 | Front | C13–C15 interface, accessibilité, UX | fait (à auditer avec WAVE / Lighthouse) |
 | Front | C16 sécurité front (CSP, en-têtes) | fait ; SSL au déploiement |
-| Front | C17 consommer une API | à faire (NewsAPI) |
-| Front | C18–C19 tests front, build | à faire (validation W3C, Vite) |
+| Front | C17 consommer une API | fait : NewsAPI (clé dans `.env` envoyée en en-tête, cache 30 min, liens filtrés, page fonctionnelle si l'API tombe) |
+| Front | C18–C19 tests front, build | build Vite en place ; validation W3C à faire |
 | Front | C20 SEO | balises de base faites ; audit à faire |
 | Back | C21 persistance sécurisée | fait (voir tableau sécurité) |
 | Back | C22 langage back-end | fait |
-| Back | C23 paiement | à faire (Stripe en mode test : achat de BetCoins) |
-| Back | C24 API sécurisée | à faire (Laravel Sanctum) |
-| Back | C25 tests back (≥ 50 %) | 38 tests PHPUnit ; couverture à mesurer |
+| Back | C23 paiement | fait : Stripe Checkout (librairie stripe-php) en mode test, webhook, 3 packs, limite d'achats |
+| Back | C24 API sécurisée | fait : API REST `/api/v1` avec Sanctum (tokens hachés, expiration 24 h), Resources, validation, CORS, doc Swagger |
+| Back | C25 tests back (≥ 50 %) | 68 tests PHPUnit ; couverture à mesurer avec `php artisan test --coverage` |
 | Back | C26 industrialisation | à faire (GitHub Actions) |
+
+## 7. Séquence : achat de BetCoins avec Stripe
+
+```mermaid
+sequenceDiagram
+    actor J as Joueur
+    participant B as BetOnMe (ShopController)
+    participant S as Stripe
+
+    J->>B: POST /shop/checkout (pack = pro)
+    B->>B: crée la commande "pending" (prix lu dans config/shop.php)
+    B->>S: checkout->sessions->create(montant, metadata)
+    S-->>B: id + URL de la page de paiement
+    B-->>J: redirection vers Stripe Checkout
+    J->>S: saisie de la carte de test 4242...
+    S-->>J: redirection vers /shop/success
+    S->>B: POST /stripe/webhook (checkout.session.completed, signé)
+    B->>B: Webhook::constructEvent() vérifie la signature
+    B->>B: crédite les BetCoins une seule fois (transaction SQL)
+```
+
+**Monétisation :** le jeu reste entièrement gratuit (100 BetCoins offerts, gains en jouant). La boutique est un modèle
+*freemium* : les joueurs qui ont tout perdu ou qui visent le classement peuvent recharger leur solde. Les BetCoins
+n'ont aucune valeur de revente, ce qui maintient BetOnMe hors du champ des jeux d'argent réglementés.
+
+## 8. Séquence : authentification par token (API)
+
+```mermaid
+sequenceDiagram
+    actor C as Client (Postman, appli mobile)
+    participant A as API BetOnMe
+    participant DB as Base de données
+
+    C->>A: POST /api/v1/login (email, mot de passe)
+    A->>DB: vérifie les identifiants (bcrypt)
+    A->>DB: enregistre le token haché (personal_access_tokens)
+    A-->>C: 200 + access_token
+    C->>A: POST /api/v1/events/4/bets + Authorization: Bearer <token>
+    A->>A: middleware auth:sanctum retrouve l'utilisateur
+    A-->>C: 201 + pari en JSON
+    C->>A: POST /api/v1/logout + Bearer <token>
+    A->>DB: supprime le token
+    A-->>C: 204
+```

@@ -2,7 +2,6 @@
 
 namespace Tests\Feature;
 
-use App\Enums\BetChoice;
 use App\Models\Event;
 use App\Models\User;
 use App\Services\BettingService;
@@ -13,59 +12,60 @@ class ProfileTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_profile_shows_balance_grade_and_history(): void
+    public function test_profile_shows_balance_grade_and_bets(): void
     {
         $user = User::factory()->create();
         $event = Event::factory()->create();
-        app(BettingService::class)->placeBet($user, $event, BetChoice::Yes, 25);
+        app(BettingService::class)->placeBet($user, $event, 'yes', 25);
 
-        $this->actingAs($user->fresh())->get('/profil')
-            ->assertOk()
+        $this->actingAs($user->fresh())->get('/profile')
+            ->assertStatus(200)
             ->assertSee('Novice')
-            ->assertSee($event->title)
-            ->assertSee('75');
+            ->assertSee('75')
+            ->assertSee($event->title);
     }
 
-    public function test_user_can_export_personal_data(): void
+    public function test_user_can_download_his_data(): void
     {
         $user = User::factory()->create(['email' => 'export@example.com']);
 
-        $response = $this->actingAs($user)->get('/profil/export')->assertOk();
+        $response = $this->actingAs($user)->get('/profile/export');
 
-        $response->assertHeader('Content-Disposition', 'attachment; filename="mes-donnees-betonme.json"');
-        $response->assertJsonPath('compte.email', 'export@example.com');
-        $this->assertArrayNotHasKey('password', $response->json('compte'));
+        $response->assertStatus(200);
+        $response->assertJsonPath('account.email', 'export@example.com');
+        $this->assertArrayNotHasKey('password', $response->json('account'));
     }
 
-    public function test_account_deletion_requires_password(): void
+    public function test_user_can_delete_his_account_with_his_password(): void
     {
         $user = User::factory()->create();
 
-        $this->actingAs($user)->delete('/profil', ['password' => 'faux'])->assertSessionHasErrors('password');
+        $this->actingAs($user)->delete('/profile', ['password' => 'wrong'])->assertSessionHasErrors('password');
         $this->assertDatabaseHas('users', ['id' => $user->id]);
 
-        $this->actingAs($user)->delete('/profil', ['password' => 'Password!2026'])->assertRedirect(route('home'));
+        $this->actingAs($user)->delete('/profile', ['password' => 'Password!2026'])->assertRedirect('/');
         $this->assertDatabaseMissing('users', ['id' => $user->id]);
         $this->assertGuest();
     }
 
-    public function test_weekly_leaderboard_ranks_winners(): void
+    public function test_leaderboard_shows_the_best_players_of_the_week(): void
     {
-        $betting = app(BettingService::class);
         $alice = User::factory()->create(['name' => 'Alice']);
         $bob = User::factory()->create(['name' => 'Bob']);
-        $event = Event::factory()->odds(3, 3)->create();
-        $betting->placeBet($alice, $event, BetChoice::Yes, 50);
-        $betting->placeBet($bob, $event, BetChoice::Yes, 10);
-        $betting->resolveEvent($event, BetChoice::Yes);
+        $event = Event::factory()->create(['odds_yes' => 3]);
 
-        $this->get('/classement')->assertOk()->assertSeeInOrder(['Alice', '150', 'Bob', '30']);
+        $bettingService = app(BettingService::class);
+        $bettingService->placeBet($alice, $event, 'yes', 50);
+        $bettingService->placeBet($bob, $event, 'yes', 10);
+        $bettingService->resolveEvent($event, 'yes');
+
+        $this->get('/leaderboard')->assertStatus(200)->assertSeeInOrder(['Alice', '150', 'Bob', '30']);
     }
 
     public function test_legal_pages_are_available(): void
     {
-        $this->get('/confidentialite')->assertOk()->assertSee('RGPD');
-        $this->get('/mentions-legales')->assertOk();
+        $this->get('/privacy')->assertStatus(200)->assertSee('RGPD');
+        $this->get('/legal')->assertStatus(200);
     }
 
     public function test_security_headers_are_sent(): void

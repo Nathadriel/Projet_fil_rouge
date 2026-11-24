@@ -20,6 +20,11 @@
     <p>Base légale : exécution du service que vous avez demandé (article 6.1.b du RGPD) et intérêt légitime pour la sécurité (article 6.1.f).
         Le principe de minimisation est appliqué : aucune donnée bancaire, d'identité ou de localisation n'est demandée.</p>
 
+    <h2>Paiements</h2>
+    <p>Les achats de BetCoins sont traités par <strong>Stripe Payments Europe</strong> (Dublin, Irlande), certifié PCI-DSS.
+        BetOnMe ne reçoit ni ne stocke jamais vos numéros de carte : seuls l'identifiant de la session de paiement, le pack acheté,
+        le montant et le statut sont conservés, pour votre historique et nos obligations comptables.</p>
+
     <h2>Durée de conservation</h2>
     <p>Vos données sont conservées tant que votre compte est actif. Les journaux de sécurité sont conservés 14 jours.
         La suppression de votre compte efface immédiatement vos données personnelles et vos paris.</p>

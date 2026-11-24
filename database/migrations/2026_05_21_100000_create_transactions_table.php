@@ -6,23 +6,25 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
+    /**
+     * Run the migrations.
+     */
     public function up(): void
     {
         Schema::create('transactions', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('user_id')->constrained()->cascadeOnDelete();
-            $table->foreignId('pari_id')->nullable()->constrained('paris')->nullOnDelete();
+            $table->foreignId('user_id')->constrained()->onDelete('cascade');
             $table->string('type', 20);
-            // Montant signé : positif = crédit, négatif = débit
+            // Positive amount = credit, negative amount = debit
             $table->integer('amount');
             $table->string('description');
             $table->timestamps();
-
-            // Accélère le classement hebdomadaire (somme des gains par période)
-            $table->index(['type', 'created_at']);
         });
     }
 
+    /**
+     * Reverse the migrations.
+     */
     public function down(): void
     {
         Schema::dropIfExists('transactions');

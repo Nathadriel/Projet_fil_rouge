@@ -8,9 +8,14 @@ use Symfony\Component\HttpFoundation\Response;
 
 class EnsureUserIsAdmin
 {
+    /**
+     * Handle an incoming request.
+     */
     public function handle(Request $request, Closure $next): Response
     {
-        abort_unless($request->user()?->isAdmin(), 403, 'Accès réservé aux administrateurs.');
+        if (! $request->user() || ! $request->user()->hasRole('admin')) {
+            abort(403);
+        }
 
         return $next($request);
     }

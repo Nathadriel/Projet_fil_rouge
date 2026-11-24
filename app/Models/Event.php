@@ -2,19 +2,32 @@
 
 namespace App\Models;
 
-use App\Enums\BetChoice;
-use App\Enums\EventStatus;
-use Database\Factories\EventFactory;
-use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\HasMany;
 
+#[Fillable(['title', 'description', 'category', 'closes_at'])]
 class Event extends Model
 {
-    /** @use HasFactory<EventFactory> */
     use HasFactory;
+
+    public const STATUS_PENDING = 'pending';
+
+    public const STATUS_OPEN = 'open';
+
+    public const STATUS_REFUSED = 'refused';
+
+    public const STATUS_RESOLVED = 'resolved';
+
+    public const STATUS_CANCELLED = 'cancelled';
+
+    public const STATUS_LABELS = [
+        'pending' => 'En attente',
+        'open' => 'Ouvert',
+        'refused' => 'Refusé',
+        'resolved' => 'Résolu',
+        'cancelled' => 'Annulé',
+    ];
 
     public const CATEGORIES = [
         'politique' => 'Politique',
@@ -24,50 +37,41 @@ class Event extends Model
         'insolite' => 'Insolite',
     ];
 
-    // Seuls les champs saisis par l'utilisateur sont assignables en masse :
-    // statut, cotes et résultat ne sont modifiables que par le code métier (admin).
-    protected $fillable = ['title', 'description', 'category', 'closes_at'];
-
     protected function casts(): array
     {
         return [
             'closes_at' => 'datetime',
             'resolved_at' => 'datetime',
-            'status' => EventStatus::class,
-            'result' => BetChoice::class,
-            'odds_yes' => 'decimal:2',
-            'odds_no' => 'decimal:2',
         ];
     }
 
-    public function creator(): BelongsTo
+    public function user()
     {
-        return $this->belongsTo(User::class, 'user_id');
+        return $this->belongsTo(User::class);
     }
 
-    public function paris(): HasMany
+    public function bets()
     {
-        return $this->hasMany(Pari::class);
+        return $this->hasMany(Bet::class);
     }
 
-    public function scopeOpen(Builder $query): Builder
-    {
-        return $query->where('status', EventStatus::Open);
-    }
-
-    public function scopeClosed(Builder $query): Builder
-    {
-        return $query->whereIn('status', [EventStatus::Resolved, EventStatus::Cancelled]);
-    }
-
-    /** Un pari est possible si l'événement est ouvert et que la date de clôture n'est pas passée */
     public function acceptsBets(): bool
     {
-        return $this->status === EventStatus::Open && $this->closes_at->isFuture();
+        return $this->status === self::STATUS_OPEN && $this->closes_at->isFuture();
     }
 
-    public function oddsFor(BetChoice $choice): float
+    public function oddsFor(string $choice): float
     {
-        return (float) ($choice === BetChoice::Yes ? $this->odds_yes : $this->odds_no);
+        return $choice === 'yes' ? (float) $this->odds_yes : (float) $this->odds_no;
+    }
+
+    public function statusLabel(): string
+    {
+        return self::STATUS_LABELS[$this->status] ?? $this->status;
+    }
+
+    public function categoryLabel(): string
+    {
+        return self::CATEGORIES[$this->category] ?? $this->category;
     }
 }

@@ -2,7 +2,7 @@
 
 namespace App\Services;
 
-use RuntimeException;
+use Exception;
 
-/** Erreur métier affichable à l'utilisateur (solde insuffisant, pari fermé...) */
-class BettingException extends RuntimeException {}
+// Business error with a message that can be shown to the user
+class BettingException extends Exception {}

@@ -1,52 +1,56 @@
 <?php
 
 use App\Http\Controllers\Admin\AdminEventController;
-use App\Http\Controllers\Auth\LoginController;
-use App\Http\Controllers\Auth\RegisterController;
+use App\Http\Controllers\Auth\AuthenticatedSessionController;
+use App\Http\Controllers\Auth\RegisteredUserController;
+use App\Http\Controllers\BetController;
 use App\Http\Controllers\EventController;
-use App\Http\Controllers\HomeController;
+use App\Http\Controllers\IndexController;
 use App\Http\Controllers\LeaderboardController;
-use App\Http\Controllers\PariController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\ShopController;
 use Illuminate\Support\Facades\Route;
 
-// Pages publiques
-Route::get('/', HomeController::class)->name('home');
-Route::get('/evenements', [EventController::class, 'index'])->name('events.index');
-Route::get('/classement', LeaderboardController::class)->name('leaderboard');
-Route::view('/confidentialite', 'legal.privacy')->name('privacy');
-Route::view('/mentions-legales', 'legal.notice')->name('legal');
+// Public pages
+Route::get('/', [IndexController::class, 'index'])->name('home');
+Route::get('/leaderboard', [LeaderboardController::class, 'index'])->name('leaderboard');
+Route::view('/privacy', 'legal.privacy')->name('privacy');
+Route::view('/legal', 'legal.notice')->name('legal');
 
-// Invités uniquement
+// Guests only
 Route::middleware('guest')->group(function () {
-    Route::get('/inscription', [RegisterController::class, 'create'])->name('register');
-    Route::post('/inscription', [RegisterController::class, 'store'])->middleware('throttle:10,1');
-    Route::get('/connexion', [LoginController::class, 'create'])->name('login');
-    Route::post('/connexion', [LoginController::class, 'store']);
+    Route::get('/register', [RegisteredUserController::class, 'create'])->name('register');
+    Route::post('/register', [RegisteredUserController::class, 'store'])->middleware('throttle:10,1');
+    Route::get('/login', [AuthenticatedSessionController::class, 'create'])->name('login');
+    Route::post('/login', [AuthenticatedSessionController::class, 'store']);
 });
 
-// Utilisateurs connectés
+// Authenticated users
 Route::middleware('auth')->group(function () {
-    Route::post('/deconnexion', [LoginController::class, 'destroy'])->name('logout');
+    Route::post('/logout', [AuthenticatedSessionController::class, 'destroy'])->name('logout');
 
-    Route::get('/evenements/creer', [EventController::class, 'create'])->name('events.create');
-    Route::post('/evenements', [EventController::class, 'store'])->name('events.store');
-    Route::post('/evenements/{event}/paris', [PariController::class, 'store'])
-        ->middleware('throttle:30,1')->name('paris.store');
+    Route::resource('events', EventController::class)->only(['create', 'store']);
+    Route::post('/events/{event}/bets', [BetController::class, 'store'])->middleware('throttle:30,1')->name('bets.store');
 
-    Route::get('/profil', [ProfileController::class, 'show'])->name('profile.show');
-    Route::get('/profil/export', [ProfileController::class, 'export'])->name('profile.export');
-    Route::delete('/profil', [ProfileController::class, 'destroy'])->name('profile.destroy');
+    Route::get('/profile', [ProfileController::class, 'show'])->name('profile.show');
+    Route::get('/profile/export', [ProfileController::class, 'export'])->name('profile.export');
+    Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
+
+    Route::get('/shop', [ShopController::class, 'index'])->name('shop.index');
+    Route::post('/shop/checkout', [ShopController::class, 'checkout'])->middleware('throttle:10,1')->name('shop.checkout');
+    Route::get('/shop/success', [ShopController::class, 'success'])->name('shop.success');
 });
 
-// Back-office
+Route::resource('events', EventController::class)->only(['index', 'show']);
+
+// Stripe webhook (protected by the Stripe signature)
+Route::post('/stripe/webhook', [ShopController::class, 'webhook'])->name('stripe.webhook');
+
+// Back office
 Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(function () {
     Route::get('/', [AdminEventController::class, 'index'])->name('index');
-    Route::post('/evenements/{event}/valider', [AdminEventController::class, 'approve'])->name('events.approve');
-    Route::post('/evenements/{event}/refuser', [AdminEventController::class, 'refuse'])->name('events.refuse');
-    Route::post('/evenements/{event}/resoudre', [AdminEventController::class, 'resolve'])->name('events.resolve');
-    Route::post('/evenements/{event}/annuler', [AdminEventController::class, 'cancel'])->name('events.cancel');
+    Route::post('/events/{event}/approve', [AdminEventController::class, 'approve'])->name('events.approve');
+    Route::post('/events/{event}/refuse', [AdminEventController::class, 'refuse'])->name('events.refuse');
+    Route::post('/events/{event}/resolve', [AdminEventController::class, 'resolve'])->name('events.resolve');
+    Route::post('/events/{event}/cancel', [AdminEventController::class, 'cancel'])->name('events.cancel');
 });
-
-// Placée après /evenements/creer pour ne pas l'intercepter
-Route::get('/evenements/{event}', [EventController::class, 'show'])->name('events.show');

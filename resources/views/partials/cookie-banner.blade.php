@@ -1,4 +1,4 @@
-{{-- Bandeau de consentement (RGPD / recommandations CNIL) : aussi simple de refuser que d'accepter --}}
+{{-- Cookie consent banner: refusing is as easy as accepting (CNIL) --}}
 <div class="cookie-banner" data-cookie-banner hidden role="dialog" aria-labelledby="cookie-title" aria-describedby="cookie-text">
     <div class="container cookie-inner">
         <div>

@@ -2,20 +2,18 @@
 
 namespace App\Http\Controllers;
 
-use App\Enums\TransactionType;
 use App\Models\Transaction;
-use Illuminate\View\View;
 
 class LeaderboardController extends Controller
 {
-    public function __invoke(): View
+    public function index()
     {
         $start = now()->startOfWeek();
 
-        // Top 10 des BetCoins gagnés depuis lundi (somme des transactions de type "gain")
-        $rows = Transaction::query()
-            ->selectRaw('user_id, SUM(amount) as total')
-            ->where('type', TransactionType::Win)
+        // Top 10 of the BetCoins won since Monday
+        $rows = Transaction::select('user_id')
+            ->selectRaw('SUM(amount) as total')
+            ->where('type', 'win')
             ->where('created_at', '>=', $start)
             ->groupBy('user_id')
             ->orderByDesc('total')
@@ -23,6 +21,6 @@ class LeaderboardController extends Controller
             ->limit(10)
             ->get();
 
-        return view('leaderboard', ['rows' => $rows, 'start' => $start]);
+        return view('leaderboard', compact('rows', 'start'));
     }
 }
