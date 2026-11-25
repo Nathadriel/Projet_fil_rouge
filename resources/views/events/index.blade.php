@@ -29,8 +29,6 @@
     </select>
 </form>
 
-@include('partials.news')
-
 <div class="grid">
     @forelse ($events as $event)
         <x-event-card :event="$event" />
@@ -40,4 +38,6 @@
 </div>
 
 {{ $events->links('pagination::simple-bootstrap-4') }}
+
+@include('partials.news')
 @endsection
